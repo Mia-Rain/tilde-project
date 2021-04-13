@@ -1,0 +1,7 @@
+#!/bin/sh
+usage() {
+  cat << 'EOF'
+~Project:
+  smylinkin' your git projects to `/home/` for easy access with `~<project>`
+EOF
+}
