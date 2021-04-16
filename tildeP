@@ -1,7 +1,98 @@
 #!/bin/sh
+has() {
+  case "$(command -v $1 2>/dev/null)" in
+    alias*|"") return 1
+  esac
+}
+deps() {
+  has git || { echo 'Git is missing... $2 exclusion unavailable'; exit 1; }
+}
 usage() {
   cat << 'EOF'
 ~Project:
-  smylinkin' your git projects to `/home/` for easy access with `~<project>`
+  linkin' your git projects for easy access with `~<project>`
+Usage:
+  <run with root privileges>
+  # [BIN=""]; ./tildeP <folder> [GITUSERNAME]
+    <folder>:
+      - Folder from which to link
+    [GITUSERNAME]:
+      - Username to exclude linking to
+          IE: if $2 is set, only git repos by $2 will by linked
+    [BIN]:
+      - Bin folder to link to
+        IE: ~/bin|/usr/bin|etc
+        Defaults to /usr/local/bin
+---
 EOF
 }
+upcase() {
+  tr '[a-z]' '[A-Z]'
+}
+enter() {
+  MEF=$(realpath "$(ls -l ${0} | cut -d'>' -f2 | tr -d ' ' | sed 's/tildeP//g')")
+  [ -f "$MEF/folder" ] || { echo "CACHE FILE IS MISSING!?... FAILING"; exit 1; } && {
+    . "$MEF/folder"
+  }
+  [ -d "$LD" ] 2>/dev/null || { echo "$LD MAY HAVE BEEN REMOVED... BACKING DOWN..."; exit 1; } && {
+    [ "$1" ] && { 
+      cd "$LD/$1"
+    } || { echo "SOMETHING HAS GONE WRONG???... BACKING DOWN..."; exit 1; }
+  }
+  exit 0
+}
+link() {
+  PD="$PWD"
+  cd "${1}"
+  for i in ./*; do
+    [ -d "$i" ] && [ -d "$i/.git" ] && {
+      i=${i#.};i=${i#/};i=${i%/}
+      echo $2
+      [ "$2" ] && {
+        GU="$(echo "$2" | upcase)"
+      }
+      [ ! "$GU" ] && { 
+        BC="$PWD"
+        cd "${BIN:-/usr/local/bin}/"
+        ln -s "$ME" "./~$i" || { echo "FAILED TO LINK!!! BACKING OUT..."; exit 1; } 
+        cd "$BC"
+      } || {
+        BC="$PWD"
+        cd "$i"
+        TGU="$(git remote -v | grep origin | grep push | tr '[:blank:]' ' ' | cut -d' ' -f2 | cut -d':' -f2 | cut -d'/' -f1 | upcase)"
+        [ "$TGU" = "$GU" ] && {
+          cd "${BIN:-/usr/local/bin}/"
+          ln -s "$ME" "./~$i" || { echo "FAILED TO LINK!!! BACKING OUT..."; exit 1; }
+        }
+        cd "$BC"
+      }
+      chmod +x "${BIN:-/usr/local/bin}/~$i" 2>/dev/null
+      chown nobody:users "${BIN:-/usr/local/bin}/~$i" 2>/dev/null
+    } 
+  done
+  cd "$PD"
+}
+case $1 in
+  help|h|--help|-h|'?')
+    usage; exit 0
+  ;;
+  *)
+    case "$(basename $0)" in
+      tildeP)
+        ME="$(realpath ./$0)" # Preserve paths
+        MEF="$(realpath ./)"
+        [ -f "$MEF/folder" ] && { echo "$MEF/folder is present... Therefore ~Project has already been run... backing down..."; exit 1; }
+        deps
+        [ ${BIN} ] && [ ! -d ${BIN} ] && {
+          echo "BIN SET BUT NOT A FOLDER.... FAILING"; exit 1
+        }
+        [ -d "${1}" ] && link "$@" || { echo "$1 IS NOT A FOLDER?!... FAILING"; exit 1; }
+        IFS=""; printf 'LD="%s"' "${1}" > "$MEF/folder"; unset IFS
+        exit 0
+      ;;
+      *)
+        enter "$(basename $0 | tr -d '~')"
+      ;;
+    esac
+  ;;
+esac
